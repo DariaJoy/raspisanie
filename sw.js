@@ -1,10 +1,22 @@
-// Офлайн-кэш: страница открывается без интернета и сама обновляется,
-// когда сеть доступна. Версию поднимать при правке списка файлов.
-var CACHE = 'raspisanie-v3';
+// Офлайн-кэш расписания.
+//
+// Для самой страницы — сеть вперёд, кэш как запасной вариант: расписание
+// должно быть актуальным, а страница маленькая, задержки не видно. Без сети
+// отдаём последнюю сохранённую копию. Для иконок и манифеста — наоборот,
+// сразу из кэша с фоновым обновлением: они меняются редко.
+//
+// Версию поднимать при каждой правке страницы.
+var CACHE = 'raspisanie-v4';
 var ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function(e){
-  e.waitUntil(caches.open(CACHE).then(function(c){ return c.addAll(ASSETS); }).then(function(){ return self.skipWaiting(); }));
+  e.waitUntil(
+    caches.open(CACHE).then(function(c){
+      // cache:'reload' — мимо HTTP-кэша браузера, иначе сюда ляжет
+      // та же устаревшая копия, из-за которой всё и затевалось
+      return c.addAll(ASSETS.map(function(u){ return new Request(u, { cache: 'reload' }); }));
+    }).then(function(){ return self.skipWaiting(); })
+  );
 });
 
 self.addEventListener('activate', function(e){
@@ -13,12 +25,33 @@ self.addEventListener('activate', function(e){
   }).then(function(){ return self.clients.claim(); }));
 });
 
-// отдаём из кэша сразу, параллельно тянем свежую версию на следующий запуск
 self.addEventListener('fetch', function(e){
-  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
-  e.respondWith(caches.match(e.request).then(function(hit){
-    var net = fetch(e.request).then(function(res){
-      if (res && res.ok) caches.open(CACHE).then(function(c){ c.put(e.request, res.clone()); });
+  var req = e.request;
+  if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+
+  var isPage = req.mode === 'navigate' || req.destination === 'document';
+
+  if (isPage) {
+    e.respondWith(
+      fetch(req).then(function(res){
+        if (res && res.ok) {
+          var copy = res.clone();
+          caches.open(CACHE).then(function(c){ c.put(req, copy); });
+        }
+        return res;
+      }).catch(function(){
+        return caches.match(req).then(function(hit){ return hit || caches.match('./index.html'); });
+      })
+    );
+    return;
+  }
+
+  e.respondWith(caches.match(req).then(function(hit){
+    var net = fetch(req).then(function(res){
+      if (res && res.ok) {
+        var copy = res.clone();
+        caches.open(CACHE).then(function(c){ c.put(req, copy); });
+      }
       return res;
     }).catch(function(){ return hit; });
     return hit || net;

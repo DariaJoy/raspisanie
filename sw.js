@@ -1,6 +1,6 @@
 // Офлайн-кэш: страница открывается без интернета и сама обновляется,
 // когда сеть доступна. Версию поднимать при правке списка файлов.
-var CACHE = 'raspisanie-v1';
+var CACHE = 'raspisanie-v2';
 var ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function(e){
